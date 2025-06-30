@@ -2,27 +2,65 @@ import { svgNamespace, state} from '../utils/constants.js';
 import { createContainer } from '../utils/container.js';
 import { updateLocationInfo } from './MainSection.js';
 import { getLocationByCity } from '../components/api.js';
+import { updateWeatherUI } from './MainSection.js';
+import { getWeather } from '../components/api.js';
+import { showErrorPopup } from './popup.js';
 
 async function updateCurrentData(cityName) {
   if (cityName && cityName.trim() !== '') {
+    try {
+      // 1. Получаем координаты города
+      const locationData = await getLocationByCity(cityName.trim());
+      
+      // 2. Обновляем состояние
+      state.currentCity = locationData.city;
+      state.currentCountry = locationData.country_name;
+      state.currentLatitude = locationData.latitude;
+      state.currentLongitude = locationData.longitude;
+      state.timezone = locationData.timezone;
+      
       try {
-          const locationData = await getLocationByCity(cityName.trim());
+        // 3. Получаем погоду
+        const weatherData = await getWeather(state.currentLatitude, state.currentLongitude);
+        
+        if (weatherData) {
+          state.currentWeather = {
+            temp: Math.round(weatherData.main.temp),
+            feels_like: Math.round(weatherData.main.feels_like),
+            humidity: weatherData.main.humidity,
+            wind: Math.round(weatherData.wind.speed),
+            icon: weatherData.weather[0].icon,
+            description: weatherData.weather[0].description
+          };
+        }
+        
+        // 4. Обновляем интерфейс
+        updateLocalDateTime();
+        updateLocationInfo();
+        updateWeatherUI();
 
-          state.currentCity = locationData.city;
-          state.currentCountry = locationData.country_name;
-          state.currentLatitude = locationData.latitude;
-          state.currentLongitude = locationData.longitude;
-          state.timezone = locationData.timezone;
-          
-          updateLocalDateTime();
-          updateLocationInfo();
-          
-          const searchInput = document.querySelector('input[type="text"]');
-          if (searchInput) searchInput.value = '';
-        } 
-        catch (error) {
-          console.error('Failed to update location:', error);
+      } catch (weatherError) {
+        // Ошибка при запросе погоды
+        showErrorPopup('Weather data unavailable. Try again later.');
+        console.error('Failed to get weather:', weatherError);
       }
+      
+      // 5. Очищаем поле ввода
+      const searchInput = document.querySelector('input[type="text"]');
+      if (searchInput) searchInput.value = '';
+      
+    } catch (locationError) {
+      // Ошибка геокодинга
+      showErrorPopup('City not found. Check the name or try another location.');
+      console.error('Failed to update location:', locationError);
+      
+      // Фокусируем поле ввода для повторного ввода
+      const searchInput = document.querySelector('input[type="text"]');
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+      }
+    }
   }
 }
 
@@ -67,7 +105,7 @@ export function updateLocalDateTime() {
 
 export function createHeader() {
   const header = document.createElement('header');
-  header.className = 'pt-10 pb-10'
+  header.className = 'pt-10 mb-[57px] font-montserrat'
   
   const container = createContainer();
 
@@ -122,11 +160,11 @@ function createRefreshButton() {
 
 function createLanguageSelector() {
   const languageSelector = document.createElement('div');
-  languageSelector.className = 'relative flex items-center justify-center w-20 h-11 bg-[#868D96]/50 rounded-md cursor-pointer gap-3';
+  languageSelector.className = 'relative flex items-center justify-center w-20 h-[44px] bg-[#868D96]/50 rounded-md cursor-pointer gap-3';
 
   const languageButton = document.createElement('button');
   languageButton.textContent = 'en ';
-  languageButton.className = 'flex items-center justify-center uppercase text-white text-[1rem] font-bold cursor-pointer';
+  languageButton.className = 'flex items-center justify-center uppercase text-white text-sm font-bold cursor-pointer';
   languageSelector.appendChild(languageButton);
 
   const langArrowSVG = document.createElementNS(svgNamespace, "svg");
@@ -195,7 +233,7 @@ function createTemperatureToggle() {
   temperatureToggle.appendChild(fahrenheitField);
   temperatureToggle.appendChild(celsiusField);
 
-  temperatureToggle.className = 'w-[88px] h-11 flex items-center bg-[#868D96]/50 text-white rounded-md cursor-pointer transition-opacity duration-300 font-bold';
+  temperatureToggle.className = 'w-[88px] h-11 flex items-center bg-[#868D96]/50 text-white rounded-md cursor-pointer transition-opacity duration-300 font-bold text-[14px]';
   fahrenheitField.textContent = ' °F';
   fahrenheitField.className = 'w-full flex items-center justify-center bg-[#4C5255]/50 h-full rounded-l-md transition-all duration-300';
   celsiusField.textContent = '°C';
@@ -231,7 +269,7 @@ function createSearchInput() {
   const headerSearchInput = document.createElement('input');
   headerSearchInput.type = 'text';
   headerSearchInput.placeholder = 'Search city or ZIP';
-  headerSearchInput.className = 'px-[15px] rounded-l-lg focus:outline-none w-full h-full text-white placeholder-white placeholder-opacity-70';
+  headerSearchInput.className = 'px-[15px] rounded-l-lg text-[14px] focus:outline-none w-full h-full text-white placeholder-white placeholder-opacity-70';
 
   headerSearchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -253,7 +291,7 @@ function createSearchInput() {
 
   const headerSearchButton = document.createElement('button');
   headerSearchButton.type = 'button';
-  headerSearchButton.className = 'h-11 w-[101px] px-4 bg-[#848c95] rounded-r-lg text-white hover:bg-[#5a6268] transition-colors duration-200 flex items-center justify-center cursor-pointer';
+  headerSearchButton.className = 'h-11 w-[101px] bg-[#848c95] text-[14px] font-bold uppercase rounded-r-lg text-white hover:bg-[#5a6268] transition-colors duration-200 flex items-center justify-center cursor-pointer';
   headerSearchButton.textContent = 'Search';
 
   headerSearchButton.addEventListener('click', () => {

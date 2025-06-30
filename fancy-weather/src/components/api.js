@@ -27,3 +27,11 @@ export async function getLocationByCity(city) {
     }
     throw new Error('City not found');
 }
+
+export async function getWeather(lat, lon) {
+    const apiKey = 'e642079ae1bab0c72fd6413ea06a1c8b';
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data;
+}

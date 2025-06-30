@@ -1,3 +1,4 @@
+import './css/fonts.css';
 import "../style.css";
 import { createHeader } from './components/Header.js';
 import { createMainSection } from './components/MainSection.js';

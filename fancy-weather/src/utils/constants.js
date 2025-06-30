@@ -8,5 +8,9 @@ export const state = {
     currentDate: 'Mon, 1 Jan',
     currentLatitude: 53.9,
     currentLongitude: 27.5667,
-    timezone: 'Europe/Minsk'
+    timezone: 'Europe/Minsk',
+    currentWeather: null,
+    weatherIcon: null,
+    temperature: null,
+    weatherDescription: null
 };

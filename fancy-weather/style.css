@@ -1,4 +1,11 @@
+@import './src/css/fonts.css';
 @import "tailwindcss";
+
+@tailwind utilities;
+
+@theme {
+    --font-montserrat: "Montserrat", "sans-serif"; 
+}
 
 @keyframes slide-down {
     0% {
@@ -34,3 +41,7 @@
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
 }
+img, video, canvas {
+    overflow: hidden !important;
+}
+
