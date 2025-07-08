@@ -1,37 +1,62 @@
 import { state } from '../utils/constants.js';
 import { createContainer } from '../utils/container.js';
-import { getLocation } from '../components/api.js';
 import { updateLocalDateTime } from './Header.js';
-import { getWeather } from '../components/api.js';
+import { getLocation, getLocationByCity, getWeather, getWeatherForecast } from '../components/api.js';
+
+export async function loadWeatherData(latitude, longitude, cityName = null) {
+    try {
+      if (cityName) {
+        const locationData = await getLocationByCity(cityName.trim());
+        state.currentCity = locationData.city;
+        state.currentCountry = locationData.country_name;
+        state.currentLatitude = locationData.latitude;
+        state.currentLongitude = locationData.longitude;
+        state.timezone = locationData.timezone;
+      }
+      
+      const [weatherData, forecastData] = await Promise.all([
+        getWeather(state.currentLatitude, state.currentLongitude),
+        getWeatherForecast(state.currentLatitude, state.currentLongitude)
+      ]);
+      
+      if (weatherData) {
+        state.currentWeather = {
+          temp: Math.round(weatherData.main.temp),
+          feels_like: Math.round(weatherData.main.feels_like),
+          humidity: weatherData.main.humidity,
+          wind: Math.round(weatherData.wind.speed),
+          icon: weatherData.weather[0].icon,
+          description: weatherData.weather[0].description
+        };
+      }
+      
+      state.forecast = forecastData || [];
+      return true;
+    } catch (error) {
+      console.error('Failed to load weather data:', error);
+      throw error;
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        const locationData = await getLocation();
-        state.currentCity = locationData.city || state.currentCity;
-        state.currentCountry = locationData.country_name || state.currentCountry;
-        state.currentLatitude = locationData.latitude || state.currentLatitude;
-        state.currentLongitude = locationData.longitude || state.currentLongitude;
-        state.timezone = locationData.timezone || state.timezone;
-        const weatherData = await getWeather(state.currentLatitude, state.currentLongitude);
-        console.log(weatherData);
-        if (weatherData) {
-            state.currentWeather = {
-                temp: Math.round(weatherData.main.temp),
-                feels_like: Math.round(weatherData.main.feels_like),
-                humidity: weatherData.main.humidity,
-                wind: Math.round(weatherData.wind.speed),
-                icon: weatherData.weather[0].icon,
-                description: weatherData.weather[0].description
-            };
-        }
+      const locationData = await getLocation();
+      state.currentCity = locationData.city || state.currentCity;
+      state.currentCountry = locationData.country_name || state.currentCountry;
+      state.currentLatitude = locationData.latitude || state.currentLatitude;
+      state.currentLongitude = locationData.longitude || state.currentLongitude;
+      state.timezone = locationData.timezone || state.timezone;
+      
+      await loadWeatherData(state.currentLatitude, state.currentLongitude);
     } catch (error) {
-        console.warn('Using default location data due to:', error.message);
+      console.warn('Using default location data due to:', error.message);
     } finally {
-        updateLocalDateTime();
-        updateLocationInfo();
-        updateWeatherUI();
+      updateLocalDateTime();
+      updateLocationInfo();
+      updateWeatherUI();
+      updateForecastUI();
     }
-});
+  });
 
 export function createMainSection() {
     const mainSection = document.createElement('section');
@@ -51,7 +76,7 @@ function createWeatherDataWrapper() {
     const weatherDataWrapper = document.createElement('div');
     
     const weatherDataHeader = document.createElement('div');
-    weatherDataHeader.className = 'flex flex-col mb-[75px]';
+    weatherDataHeader.className = 'flex flex-col mb-[70px]';
     
     const weatherDataLocation = document.createElement('div');
     weatherDataLocation.className = 'weather-location text-white font-bold text-[44px] uppercase';
@@ -64,7 +89,7 @@ function createWeatherDataWrapper() {
     weatherDataWrapper.appendChild(weatherDataHeader);
 
     const weatherCurrentDataWrapper = document.createElement('div');
-    weatherCurrentDataWrapper.className = 'flex items-end gap-[35px]';
+    weatherCurrentDataWrapper.className = 'flex items-end gap-[35px] mb-[70px]';
     
     const currentTemperatureWrapper = document.createElement('div');
     currentTemperatureWrapper.className = 'flex items-end relative';
@@ -101,6 +126,10 @@ function createWeatherDataWrapper() {
     weatherCurrentDataWrapper.appendChild(weatherDetailsWrapper);
     weatherDataWrapper.appendChild(weatherCurrentDataWrapper);
     
+
+    const forecastBlock = createForecastBlock();
+    weatherDataWrapper.appendChild(forecastBlock);
+
     updateWeatherInfo(weatherDataLocation, weatherDateTime);
     
     return weatherDataWrapper;
@@ -165,4 +194,52 @@ export function updateWeatherUI() {
     if (currentHumidity) {
         currentHumidity.textContent = `Humidity: ${state.currentWeather.humidity}%`;
     }
+}
+
+
+function createForecastBlock() {
+  const forecastBlock = document.createElement('div');
+  const daysContainer = document.createElement('div');
+  daysContainer.className = 'flex gap-[55px]';
+  for (let i = 0; i < 3; i++) {
+    const dayCard = document.createElement('div');
+    dayCard.className = 'text-white font-montserrat';
+        
+    const dayName = document.createElement('div');
+    dayName.className = 'font-[700] text-[22px] forecast-day-name uppercase';
+        
+    const iconTempContainer = document.createElement('div');
+    iconTempContainer.className = 'flex items-baseline'
+    const dayTemp = document.createElement('div');
+    dayTemp.className = 'font-[600] text-[80px] forecast-day-temp ';
+        
+
+    const dayIcon = document.createElement('img');
+    dayIcon.className = 'forecast-day-icon object-contain max-w-full max-h-[80px]';
+    dayIcon.alt = 'Weather icon';
+
+    iconTempContainer.append(dayTemp,dayIcon);
+    dayCard.append(dayName, iconTempContainer);
+    daysContainer.appendChild(dayCard);
+  }
+
+  forecastBlock.appendChild(daysContainer);
+  return forecastBlock;
+}
+
+export function updateForecastUI() {
+    if (!state.forecast || !state.forecast.length) return;
+    
+    const dayNames = document.querySelectorAll('.forecast-day-name');
+    const dayIcons = document.querySelectorAll('.forecast-day-icon');
+    const dayTemps = document.querySelectorAll('.forecast-day-temp');
+    
+    state.forecast.forEach((day, index) => {
+        if (dayNames[index]) dayNames[index].textContent = day.date;
+        if (dayIcons[index]) {
+            dayIcons[index].src = `https://openweathermap.org/img/wn/${day.icon}@2x.png`;
+            dayIcons[index].alt = day.description || 'Weather icon';
+        }
+        if (dayTemps[index]) dayTemps[index].textContent = `${day.temp}°`;
+    });
 }

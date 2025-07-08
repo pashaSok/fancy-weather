@@ -35,3 +35,30 @@ export async function getWeather(lat, lon) {
     const data = await res.json();
     return data;
 }
+
+export async function getWeatherForecast(lat, lon) {
+
+    const apiKey = 'e642079ae1bab0c72fd6413ea06a1c8b';
+    const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric&cnt=40`;
+    
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      const middayForecasts = data.list.filter(item => {
+        const hour = new Date(item.dt * 1000).getHours();
+        return hour >= 11 && hour <= 13;
+      }).slice(0, 3);
+      
+      return middayForecasts.map(day => ({
+        date: new Date(day.dt * 1000).toLocaleDateString('en-US', { weekday: 'long' }),
+        temp: Math.round(day.main.temp),
+        icon: day.weather[0].icon.replace('n', 'd'),
+        description: day.weather[0].description
+      }));
+      
+    } catch (error) {
+      console.error('Error fetching forecast:', error);
+      throw error;
+    }
+}

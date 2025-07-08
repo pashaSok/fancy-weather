@@ -1,65 +1,32 @@
 import { svgNamespace, state} from '../utils/constants.js';
 import { createContainer } from '../utils/container.js';
-import { updateLocationInfo } from './MainSection.js';
-import { getLocationByCity } from '../components/api.js';
-import { updateWeatherUI } from './MainSection.js';
-import { getWeather } from '../components/api.js';
+import { updateLocationInfo, updateWeatherUI, updateForecastUI, loadWeatherData} from './MainSection.js';
 import { showErrorPopup } from './popup.js';
 
-async function updateCurrentData(cityName) {
-  if (cityName && cityName.trim() !== '') {
-    try {
-      // 1. Получаем координаты города
-      const locationData = await getLocationByCity(cityName.trim());
-      
-      // 2. Обновляем состояние
-      state.currentCity = locationData.city;
-      state.currentCountry = locationData.country_name;
-      state.currentLatitude = locationData.latitude;
-      state.currentLongitude = locationData.longitude;
-      state.timezone = locationData.timezone;
-      
-      try {
-        // 3. Получаем погоду
-        const weatherData = await getWeather(state.currentLatitude, state.currentLongitude);
-        
-        if (weatherData) {
-          state.currentWeather = {
-            temp: Math.round(weatherData.main.temp),
-            feels_like: Math.round(weatherData.main.feels_like),
-            humidity: weatherData.main.humidity,
-            wind: Math.round(weatherData.wind.speed),
-            icon: weatherData.weather[0].icon,
-            description: weatherData.weather[0].description
-          };
-        }
-        
-        // 4. Обновляем интерфейс
-        updateLocalDateTime();
-        updateLocationInfo();
-        updateWeatherUI();
 
-      } catch (weatherError) {
-        // Ошибка при запросе погоды
-        showErrorPopup('Weather data unavailable. Try again later.');
-        console.error('Failed to get weather:', weatherError);
-      }
-      
-      // 5. Очищаем поле ввода
-      const searchInput = document.querySelector('input[type="text"]');
-      if (searchInput) searchInput.value = '';
-      
-    } catch (locationError) {
-      // Ошибка геокодинга
+export async function updateCurrentData(cityName) {
+  if (!cityName?.trim()) return;
+  
+  try {
+    await loadWeatherData(null, null, cityName);
+    updateLocalDateTime();
+    updateLocationInfo();
+    updateWeatherUI();
+    updateForecastUI();
+    
+    const searchInput = document.querySelector('input[type="text"]');
+    if (searchInput) searchInput.value = '';
+  } catch (error) {
+    if (error.message.includes('City not found')) {
       showErrorPopup('City not found. Check the name or try another location.');
-      console.error('Failed to update location:', locationError);
-      
-      // Фокусируем поле ввода для повторного ввода
-      const searchInput = document.querySelector('input[type="text"]');
-      if (searchInput) {
-        searchInput.value = '';
-        searchInput.focus();
-      }
+    } else {
+      showErrorPopup('Weather data unavailable. Try again later.');
+    }
+    
+    const searchInput = document.querySelector('input[type="text"]');
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
     }
   }
 }
