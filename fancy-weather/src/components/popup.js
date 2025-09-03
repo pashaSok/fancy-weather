@@ -1,3 +1,6 @@
+import { translations } from "../utils/translations.js";
+import { state } from "../utils/constants.js";
+
 export function createErrorPopup() {
   const popup = document.createElement("div");
   popup.id = "error-popup";
@@ -47,18 +50,16 @@ export function showErrorPopup(message) {
   }
 
   const errorMessage = popup.querySelector("#error-message");
-  errorMessage.textContent = message;
+  const t = translations[state.currentLang];
+  errorMessage.textContent = t[message] || message;
 
-  // Анимация появления
   popup.classList.remove("hidden", "translate-x-full");
   popup.classList.add("translate-x-0");
 
-  // Автоматическое скрытие через 3 секунды
   setTimeout(() => {
     popup.classList.remove("translate-x-0");
     popup.classList.add("translate-x-full");
 
-    // Полное скрытие после завершения анимации
     setTimeout(() => {
       popup.classList.add("hidden");
     }, 300);

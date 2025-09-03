@@ -1,11 +1,14 @@
-import { svgNamespace, state } from "../utils/constants.js";
+import { svgNamespace, state, temperatureUtils } from "../utils/constants.js";
 import { createContainer } from "../utils/container.js";
+import { translations } from "../utils/translations.js";
 import {
   updateLocationInfo,
-  updateWeatherUI,
   updateForecastUI,
   loadWeatherData,
+  updateBackgroundWithoutLoader,
+  updateAllTemperatures,
 } from "./MainSection.js";
+import { getWeather, getCityBackground } from "./api.js";
 import { showErrorPopup } from "./popup.js";
 
 export async function updateCurrentData(cityName) {
@@ -15,16 +18,16 @@ export async function updateCurrentData(cityName) {
     await loadWeatherData(null, null, cityName);
     updateLocalDateTime();
     updateLocationInfo();
-    updateWeatherUI();
+    updateAllTemperatures();
     updateForecastUI();
 
     const searchInput = document.querySelector('input[type="text"]');
     if (searchInput) searchInput.value = "";
   } catch (error) {
-    if (error.message.includes("City not found")) {
-      showErrorPopup("City not found. Check the name or try another location.");
+    if (error.message.includes("errorCityNotFound")) {
+      showErrorPopup("errorWeatherUnavailable");
     } else {
-      showErrorPopup("Weather data unavailable. Try again later.");
+      showErrorPopup("errorRefreshFailed");
     }
 
     const searchInput = document.querySelector('input[type="text"]');
@@ -125,33 +128,63 @@ function createRefreshButton() {
   );
   spinner.setAttribute("viewBox", "0 0 24 24");
   spinner.setAttribute("fill", "none");
-  spinner.innerHTML = `
-    <path xmlns="http://www.w3.org/2000/svg"
-      d="M4.06189 13C4.02104 12.6724 4 12.3387 4 12C4 7.58172 7.58172 4 12 4C14.5006 4 16.7332 5.14727 18.2002 6.94416M19.9381 11C19.979 11.3276 20 11.6613 20 12C20 16.4183 16.4183 20 12 20C9.61061 20 7.46589 18.9525 6 17.2916M9 17H6V17.2916M18.2002 4V6.94416M18.2002 6.94416V6.99993L15.2002 7M6 20V17.2916"
-      stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-    />
-  `;
 
+  const path = document.createElementNS(svgNamespace, "path");
+  path.setAttribute(
+    "d",
+    "M4.06189 13C4.02104 12.6724 4 12.3387 4 12C4 7.58172 7.58172 4 12 4C14.5006 4 16.7332 5.14727 18.2002 6.94416M19.9381 11C19.979 11.3276 20 11.6613 20 12C20 16.4183 16.4183 20 12 20C9.61061 20 7.46589 18.9525 6 17.2916M9 17H6V17.2916M18.2002 4V6.94416M18.2002 6.94416V6.99993L15.2002 7M6 20V17.2916"
+  );
+  path.setAttribute("stroke", "#fff");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+
+  spinner.appendChild(path);
   button.appendChild(spinner);
 
-  button.onclick = function () {
-    spinner.setAttribute(
-      "class",
-      `
-      w-5 h-5 absolute top-1/2 left-1/2
-      transform -translate-x-1/2 -translate-y-1/2
-      animate-spin
-    `
-    );
-    setTimeout(() => {
-      spinner.setAttribute(
-        "class",
-        `
-        w-5 h-5 absolute top-1/2 left-1/2
-        transform -translate-x-1/2 -translate-y-1/2
-      `
+  button.onclick = async function () {
+    spinner.classList.add("animate-spin");
+    try {
+      if (!state.currentLatitude || !state.currentLongitude) {
+        throw new Error("Coordinates not available");
+      }
+
+      const weatherData = await getWeather(
+        state.currentLatitude,
+        state.currentLongitude
       );
-    }, 500);
+
+      if (!weatherData?.weather?.[0]) {
+        throw new Error("Invalid weather data");
+      }
+
+      state.currentWeather = {
+        temp: Math.round(weatherData.main.temp),
+        feels_like: Math.round(weatherData.main.feels_like),
+        humidity: weatherData.main.humidity,
+        wind: Math.round(weatherData.wind.speed),
+        icon: weatherData.weather[0].icon,
+        description: weatherData.weather[0].description,
+      };
+
+      const bgUrl = await getCityBackground(
+        state.currentCity,
+        weatherData.weather[0].main,
+        state.timezone
+      );
+
+      if (bgUrl) {
+        updateBackgroundWithoutLoader(bgUrl);
+      }
+      updateAllTemperatures();
+    } catch (error) {
+      console.error("Refresh failed:", error);
+      showErrorPopup("Failed to refresh weather data");
+    } finally {
+      setTimeout(() => {
+        spinner.classList.remove("animate-spin");
+      }, 500);
+    }
   };
 
   return button;
@@ -166,7 +199,7 @@ function createLanguageSelector() {
   `;
 
   const button = document.createElement("button");
-  button.textContent = "en ";
+  button.textContent = state.currentLang + " ";
   button.className = `
     flex items-center justify-center
     uppercase text-white text-sm font-bold
@@ -202,14 +235,20 @@ function createLanguageSelector() {
       font-bold last:rounded-b-md
     `;
     item.setAttribute("role", "menuitem");
+
     item.addEventListener("click", (event) => {
       event.preventDefault();
+      state.currentLang = lang;
+      localStorage.setItem("language", lang);
+
       button.textContent = lang;
+
       menu.classList.remove("slide-down");
       menu.classList.add("slide-up");
       selector.classList.remove("rounded-b-md");
-      state.currentLang = lang;
-      updateLocalDateTime();
+
+      updateUIForLanguage();
+
       event.stopPropagation();
     });
     menu.appendChild(item);
@@ -252,10 +291,10 @@ function createTemperatureToggle() {
   `;
 
   const fahrenheit = document.createElement("div");
-  fahrenheit.textContent = " °F";
+  fahrenheit.textContent = "°F";
   fahrenheit.className = `
     w-full flex items-center justify-center
-    bg-[#4C5255]/50 h-full rounded-l-md
+    h-full rounded-l-md
     transition-all duration-300
   `;
 
@@ -263,26 +302,39 @@ function createTemperatureToggle() {
   celsius.textContent = "°C";
   celsius.className = `
     w-full h-full flex items-center justify-center
-    opacity-25 rounded-r-md transition-all duration-300
+    rounded-r-md transition-all duration-300
   `;
+
+  if (state.temperatureUnit === "fahrenheit") {
+    fahrenheit.classList.add("opacity-100", "bg-[#4C5255]/50");
+    celsius.classList.add("opacity-25");
+  } else {
+    celsius.classList.add("opacity-100", "bg-[#4C5255]/50");
+    fahrenheit.classList.add("opacity-25");
+  }
 
   toggle.append(fahrenheit, celsius);
 
-  let activeUnit = "fahrenheit";
   toggle.addEventListener("click", () => {
-    if (activeUnit === "fahrenheit") {
-      fahrenheit.classList.remove("opacity-100", "bg-[#4C5255]/50");
-      fahrenheit.classList.add("opacity-25");
-      celsius.classList.remove("opacity-25");
-      celsius.classList.add("opacity-100", "bg-[#4C5255]/50");
-      activeUnit = "celsius";
-    } else {
+    const newUnit =
+      state.temperatureUnit === "celsius" ? "fahrenheit" : "celsius";
+
+    state.temperatureUnit = newUnit;
+    localStorage.setItem("temperatureUnit", newUnit);
+
+    if (newUnit === "fahrenheit") {
+      fahrenheit.classList.add("opacity-100", "bg-[#4C5255]/50");
+      fahrenheit.classList.remove("opacity-25");
       celsius.classList.remove("opacity-100", "bg-[#4C5255]/50");
       celsius.classList.add("opacity-25");
-      fahrenheit.classList.remove("opacity-25");
-      fahrenheit.classList.add("opacity-100", "bg-[#4C5255]/50");
-      activeUnit = "fahrenheit";
+    } else {
+      celsius.classList.add("opacity-100", "bg-[#4C5255]/50");
+      celsius.classList.remove("opacity-25");
+      fahrenheit.classList.remove("opacity-100", "bg-[#4C5255]/50");
+      fahrenheit.classList.add("opacity-25");
     }
+
+    updateAllTemperatures();
   });
 
   return toggle;
@@ -301,7 +353,7 @@ function createSearchInput() {
 
   const input = document.createElement("input");
   input.type = "text";
-  input.placeholder = "Search city or ZIP";
+  input.placeholder = translations[state.currentLang].searchPlaceholder;
   input.className = `
     px-[15px] rounded-l-lg text-[14px] focus:outline-none
     w-full h-full text-white placeholder-white
@@ -337,7 +389,7 @@ function createSearchInput() {
     hover:bg-[#5a6268] transition-colors duration-200
     flex items-center justify-center cursor-pointer
   `;
-  searchButton.textContent = "Search";
+  searchButton.textContent = translations[state.currentLang].searchButton;
 
   searchButton.addEventListener("click", () => {
     updateCurrentData(input.value);
@@ -345,4 +397,59 @@ function createSearchInput() {
 
   wrapper.append(inputContainer, searchButton);
   return wrapper;
+}
+
+export function updateUIForLanguage() {
+  const t = translations[state.currentLang];
+  if (!t) return;
+  const searchInput = document.querySelector('input[type="text"]');
+  const searchButton = document.querySelector(".search-button");
+  if (searchInput) searchInput.placeholder = t.searchPlaceholder;
+  if (searchButton) searchButton.textContent = t.searchButton;
+  updateWeatherTexts();
+  updateLocalDateTime();
+  updateMapTexts();
+}
+
+function updateWeatherTexts() {
+  const t = translations[state.currentLang];
+  if (!t) return;
+
+  const feelsLikeElement = document.querySelector(".weather-feels-like");
+  const windElement = document.querySelector(".weather-wind");
+  const humidityElement = document.querySelector(".weather-humidity");
+
+  if (feelsLikeElement && state.currentWeather) {
+    let feelsLikeTemp = state.currentWeather.feels_like;
+    if (state.temperatureUnit === "fahrenheit") {
+      feelsLikeTemp = temperatureUtils.celsiusToFahrenheit(feelsLikeTemp);
+    }
+    feelsLikeElement.textContent = `${t.feelsLike}: ${feelsLikeTemp}°${
+      state.temperatureUnit === "celsius" ? "C" : "F"
+    }`;
+  }
+
+  if (windElement && state.currentWeather) {
+    windElement.textContent = `${t.wind}: ${state.currentWeather.wind} ${t.m_s}`;
+  }
+
+  if (humidityElement && state.currentWeather) {
+    humidityElement.textContent = `${t.humidity}: ${state.currentWeather.humidity}%`;
+  }
+}
+
+function updateMapTexts() {
+  const t = translations[state.currentLang];
+  if (!t) return;
+
+  const latLabels = document.querySelectorAll(".latitude-label");
+  const lngLabels = document.querySelectorAll(".longitude-label");
+
+  latLabels.forEach((label) => {
+    label.textContent = t.latitude + ":";
+  });
+
+  lngLabels.forEach((label) => {
+    label.textContent = t.longitude + ":";
+  });
 }

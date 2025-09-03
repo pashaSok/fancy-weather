@@ -121,7 +121,7 @@ export async function getWeatherForecast(latitude, longitude) {
 export function getStaticMapUrl(latitude, longitude, options = {}) {
   const defaultOptions = {
     zoom: 15,
-    markerColor: "pm2blm",
+    markerColor: "pm2blm", // red marker
   };
 
   const { zoom, markerColor } = { ...defaultOptions, ...options };
@@ -131,4 +131,38 @@ export function getStaticMapUrl(latitude, longitude, options = {}) {
   }
 
   return `https://yandex.ru/map-widget/v1/?ll=${longitude},${latitude}&z=${zoom}&l=map&pt=${longitude},${latitude},${markerColor}`;
+}
+
+export async function getCityBackground(city, weatherCondition, timezone) {
+  const unsplashApiKey = "Re_IpqUhO1nW0Xy9dxV5nSYM2zYqU6dp4WUhphjNU08";
+
+  const options = {
+    timeZone: timezone,
+    hour12: false,
+    hour: "numeric",
+  };
+
+  const cityHour = parseInt(new Date().toLocaleString("en-US", options));
+  let timeOfDay;
+
+  if (cityHour >= 5 && cityHour < 12) timeOfDay = "morning";
+  else if (cityHour >= 12 && cityHour < 17) timeOfDay = "day";
+  else if (cityHour >= 17 && cityHour < 21) timeOfDay = "evening";
+  else timeOfDay = "night";
+
+  try {
+    const query = `${city} city landscape ${weatherCondition} ${timeOfDay}`;
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://api.unsplash.com/photos/random?query=${encodedQuery}&client_id=${unsplashApiKey}&orientation=landscape`;
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Unsplash API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.urls.regular;
+  } catch (error) {
+    return null;
+  }
 }
