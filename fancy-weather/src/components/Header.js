@@ -1,25 +1,24 @@
-import { svgNamespace, state, temperatureUtils } from "../utils/constants.js";
+import { svgNamespace } from "../utils/constants.js";
 import { createContainer } from "../utils/container.js";
 import { translations } from "../utils/translations.js";
+import { getState, updateState, convertTemperature } from "../utils/state.js";
 import {
+  updateUIForLanguage,
+  updateAllWeatherData,
   updateLocationInfo,
+  updateWeatherUI,
   updateForecastUI,
-  loadWeatherData,
-  updateBackgroundWithoutLoader,
-  updateAllTemperatures,
-} from "./MainSection.js";
-import { getWeather, getCityBackground } from "./api.js";
+} from "../utils/ui-updater.js";
 import { showErrorPopup } from "./popup.js";
+import { getWeather, getCityBackground } from "../utils/api-utils.js";
+import { weatherApp } from "../services/app-init.js";
 
 export async function updateCurrentData(cityName) {
   if (!cityName?.trim()) return;
 
   try {
-    await loadWeatherData(null, null, cityName);
-    updateLocalDateTime();
-    updateLocationInfo();
-    updateAllTemperatures();
-    updateForecastUI();
+    await weatherApp.loadWeatherData(cityName);
+    updateAllWeatherData();
 
     const searchInput = document.querySelector('input[type="text"]');
     if (searchInput) searchInput.value = "";
@@ -36,54 +35,6 @@ export async function updateCurrentData(cityName) {
       searchInput.focus();
     }
   }
-}
-
-export function updateLocalDateTime() {
-  if (state.timeUpdateInterval) {
-    clearInterval(state.timeUpdateInterval);
-  }
-
-  const updateTime = () => {
-    if (state.timezone) {
-      const now = new Date();
-      const options = {
-        timeZone: state.timezone,
-        weekday: "short",
-        day: "numeric",
-        month: "long",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      };
-
-      const formatter = new Intl.DateTimeFormat(
-        state.currentLang || "en",
-        options
-      );
-      const parts = formatter.formatToParts(now);
-
-      state.currentDate = `${parts.find((p) => p.type === "weekday").value}, ${
-        parts.find((p) => p.type === "day").value
-      } ${parts.find((p) => p.type === "month").value}`;
-
-      const hour = parts.find((p) => p.type === "hour").value.padStart(2, "0");
-      const minute = parts
-        .find((p) => p.type === "minute")
-        .value.padStart(2, "0");
-      state.currentTime = `${hour}:${minute}`;
-
-      updateLocationInfo();
-    }
-  };
-
-  updateTime();
-  const now = new Date();
-  const secondsUntilNextMinute = 60 - now.getSeconds();
-
-  state.timeUpdateInterval = setTimeout(() => {
-    updateTime();
-    state.timeUpdateInterval = setInterval(updateTime, 60000);
-  }, secondsUntilNextMinute * 1000);
 }
 
 export function createHeader() {
@@ -145,6 +96,7 @@ function createRefreshButton() {
   button.onclick = async function () {
     spinner.classList.add("animate-spin");
     try {
+      const state = getState();
       if (!state.currentLatitude || !state.currentLongitude) {
         throw new Error("Coordinates not available");
       }
@@ -158,14 +110,16 @@ function createRefreshButton() {
         throw new Error("Invalid weather data");
       }
 
-      state.currentWeather = {
-        temp: Math.round(weatherData.main.temp),
-        feels_like: Math.round(weatherData.main.feels_like),
-        humidity: weatherData.main.humidity,
-        wind: Math.round(weatherData.wind.speed),
-        icon: weatherData.weather[0].icon,
-        description: weatherData.weather[0].description,
-      };
+      updateState({
+        currentWeather: {
+          temp: Math.round(weatherData.main.temp),
+          feels_like: Math.round(weatherData.main.feels_like),
+          humidity: weatherData.main.humidity,
+          wind: Math.round(weatherData.wind.speed),
+          icon: weatherData.weather[0].icon,
+          description: weatherData.weather[0].description,
+        },
+      });
 
       const bgUrl = await getCityBackground(
         state.currentCity,
@@ -174,9 +128,13 @@ function createRefreshButton() {
       );
 
       if (bgUrl) {
-        updateBackgroundWithoutLoader(bgUrl);
+        weatherApp.updateBackground(bgUrl);
       }
-      updateAllTemperatures();
+
+      // Обновляем только погоду, не карту
+      updateLocationInfo();
+      updateWeatherUI();
+      updateForecastUI();
     } catch (error) {
       console.error("Refresh failed:", error);
       showErrorPopup("Failed to refresh weather data");
@@ -198,6 +156,7 @@ function createLanguageSelector() {
     cursor-pointer gap-3
   `;
 
+  const state = getState();
   const button = document.createElement("button");
   button.textContent = state.currentLang + " ";
   button.className = `
@@ -238,8 +197,7 @@ function createLanguageSelector() {
 
     item.addEventListener("click", (event) => {
       event.preventDefault();
-      state.currentLang = lang;
-      localStorage.setItem("language", lang);
+      updateState({ currentLang: lang });
 
       button.textContent = lang;
 
@@ -289,6 +247,24 @@ function createTemperatureToggle() {
     cursor-pointer transition-opacity duration-300
     font-bold text-[14px]
   `;
+  const updateToggleAppearance = () => {
+    const state = getState();
+
+    const fahrenheit = toggle.querySelector("div:first-child");
+    const celsius = toggle.querySelector("div:last-child");
+
+    if (state.temperatureUnit === "fahrenheit") {
+      fahrenheit.classList.add("opacity-100", "bg-[#4C5255]/50");
+      fahrenheit.classList.remove("opacity-25");
+      celsius.classList.remove("opacity-100", "bg-[#4C5255]/50");
+      celsius.classList.add("opacity-25");
+    } else {
+      celsius.classList.add("opacity-100", "bg-[#4C5255]/50");
+      celsius.classList.remove("opacity-25");
+      fahrenheit.classList.remove("opacity-100", "bg-[#4C5255]/50");
+      fahrenheit.classList.add("opacity-25");
+    }
+  };
 
   const fahrenheit = document.createElement("div");
   fahrenheit.textContent = "°F";
@@ -305,42 +281,27 @@ function createTemperatureToggle() {
     rounded-r-md transition-all duration-300
   `;
 
-  if (state.temperatureUnit === "fahrenheit") {
-    fahrenheit.classList.add("opacity-100", "bg-[#4C5255]/50");
-    celsius.classList.add("opacity-25");
-  } else {
-    celsius.classList.add("opacity-100", "bg-[#4C5255]/50");
-    fahrenheit.classList.add("opacity-25");
-  }
-
   toggle.append(fahrenheit, celsius);
 
+  updateToggleAppearance();
+
   toggle.addEventListener("click", () => {
+    const state = getState();
     const newUnit =
       state.temperatureUnit === "celsius" ? "fahrenheit" : "celsius";
 
-    state.temperatureUnit = newUnit;
-    localStorage.setItem("temperatureUnit", newUnit);
-
-    if (newUnit === "fahrenheit") {
-      fahrenheit.classList.add("opacity-100", "bg-[#4C5255]/50");
-      fahrenheit.classList.remove("opacity-25");
-      celsius.classList.remove("opacity-100", "bg-[#4C5255]/50");
-      celsius.classList.add("opacity-25");
-    } else {
-      celsius.classList.add("opacity-100", "bg-[#4C5255]/50");
-      celsius.classList.remove("opacity-25");
-      fahrenheit.classList.remove("opacity-100", "bg-[#4C5255]/50");
-      fahrenheit.classList.add("opacity-25");
-    }
-
-    updateAllTemperatures();
+    updateState({ temperatureUnit: newUnit });
+    updateToggleAppearance();
+    updateAllWeatherData();
   });
 
   return toggle;
 }
 
 function createSearchInput() {
+  const state = getState();
+  const t = translations[state.currentLang];
+
   const wrapper = document.createElement("div");
   wrapper.className = "flex items-center w-[375px] rounded-lg";
 
@@ -353,7 +314,7 @@ function createSearchInput() {
 
   const input = document.createElement("input");
   input.type = "text";
-  input.placeholder = translations[state.currentLang].searchPlaceholder;
+  input.placeholder = t.searchPlaceholder;
   input.className = `
     px-[15px] rounded-l-lg text-[14px] focus:outline-none
     w-full h-full text-white placeholder-white
@@ -387,9 +348,9 @@ function createSearchInput() {
     h-11 w-[101px] bg-[#848c95] text-[14px]
     font-bold uppercase rounded-r-lg text-white
     hover:bg-[#5a6268] transition-colors duration-200
-    flex items-center justify-center cursor-pointer
+    flex items-center justify-center cursor-pointer search-button
   `;
-  searchButton.textContent = translations[state.currentLang].searchButton;
+  searchButton.textContent = t.searchButton;
 
   searchButton.addEventListener("click", () => {
     updateCurrentData(input.value);
@@ -397,59 +358,4 @@ function createSearchInput() {
 
   wrapper.append(inputContainer, searchButton);
   return wrapper;
-}
-
-export function updateUIForLanguage() {
-  const t = translations[state.currentLang];
-  if (!t) return;
-  const searchInput = document.querySelector('input[type="text"]');
-  const searchButton = document.querySelector(".search-button");
-  if (searchInput) searchInput.placeholder = t.searchPlaceholder;
-  if (searchButton) searchButton.textContent = t.searchButton;
-  updateWeatherTexts();
-  updateLocalDateTime();
-  updateMapTexts();
-}
-
-function updateWeatherTexts() {
-  const t = translations[state.currentLang];
-  if (!t) return;
-
-  const feelsLikeElement = document.querySelector(".weather-feels-like");
-  const windElement = document.querySelector(".weather-wind");
-  const humidityElement = document.querySelector(".weather-humidity");
-
-  if (feelsLikeElement && state.currentWeather) {
-    let feelsLikeTemp = state.currentWeather.feels_like;
-    if (state.temperatureUnit === "fahrenheit") {
-      feelsLikeTemp = temperatureUtils.celsiusToFahrenheit(feelsLikeTemp);
-    }
-    feelsLikeElement.textContent = `${t.feelsLike}: ${feelsLikeTemp}°${
-      state.temperatureUnit === "celsius" ? "C" : "F"
-    }`;
-  }
-
-  if (windElement && state.currentWeather) {
-    windElement.textContent = `${t.wind}: ${state.currentWeather.wind} ${t.m_s}`;
-  }
-
-  if (humidityElement && state.currentWeather) {
-    humidityElement.textContent = `${t.humidity}: ${state.currentWeather.humidity}%`;
-  }
-}
-
-function updateMapTexts() {
-  const t = translations[state.currentLang];
-  if (!t) return;
-
-  const latLabels = document.querySelectorAll(".latitude-label");
-  const lngLabels = document.querySelectorAll(".longitude-label");
-
-  latLabels.forEach((label) => {
-    label.textContent = t.latitude + ":";
-  });
-
-  lngLabels.forEach((label) => {
-    label.textContent = t.longitude + ":";
-  });
 }

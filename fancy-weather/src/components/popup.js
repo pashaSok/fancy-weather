@@ -1,5 +1,5 @@
 import { translations } from "../utils/translations.js";
-import { state } from "../utils/constants.js";
+import { getState } from "../utils/state.js";
 
 export function createErrorPopup() {
   const popup = document.createElement("div");
@@ -37,8 +37,8 @@ export function createErrorPopup() {
   return popup;
 }
 
-export function showErrorPopup(message) {
-  if (!message) {
+export function showErrorPopup(messageKey) {
+  if (!messageKey) {
     console.warn("Error message is empty");
     return;
   }
@@ -49,9 +49,11 @@ export function showErrorPopup(message) {
     popup = createErrorPopup();
   }
 
-  const errorMessage = popup.querySelector("#error-message");
+  const state = getState();
   const t = translations[state.currentLang];
-  errorMessage.textContent = t[message] || message;
+  const errorMessage = popup.querySelector("#error-message");
+
+  errorMessage.textContent = t[messageKey] || messageKey;
 
   popup.classList.remove("hidden", "translate-x-full");
   popup.classList.add("translate-x-0");
