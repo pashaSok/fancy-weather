@@ -52,8 +52,10 @@ export function showErrorPopup(messageKey) {
   const state = getState();
   const t = translations[state.currentLang];
   const errorMessage = popup.querySelector("#error-message");
-
-  errorMessage.textContent = t[messageKey] || messageKey;
+  const message =
+    messageKey.split(".").reduce((obj, key) => obj && obj[key], t) ||
+    messageKey;
+  errorMessage.textContent = message;
 
   popup.classList.remove("hidden", "translate-x-full");
   popup.classList.add("translate-x-0");

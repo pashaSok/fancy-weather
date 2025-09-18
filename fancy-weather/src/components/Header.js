@@ -8,6 +8,7 @@ import {
   updateLocationInfo,
   updateWeatherUI,
   updateForecastUI,
+  updateForecastDayNames,
 } from "../utils/ui-updater.js";
 import { showErrorPopup } from "./popup.js";
 import { getWeather, getCityBackground } from "../utils/api-utils.js";
@@ -100,7 +101,6 @@ function createRefreshButton() {
       if (!state.currentLatitude || !state.currentLongitude) {
         throw new Error("Coordinates not available");
       }
-
       const weatherData = await getWeather(
         state.currentLatitude,
         state.currentLongitude
@@ -120,18 +120,14 @@ function createRefreshButton() {
           description: weatherData.weather[0].description,
         },
       });
-
       const bgUrl = await getCityBackground(
         state.currentCity,
         weatherData.weather[0].main,
         state.timezone
       );
 
-      if (bgUrl) {
-        weatherApp.updateBackground(bgUrl);
-      }
+      weatherApp.updateBackground(bgUrl);
 
-      // Обновляем только погоду, не карту
       updateLocationInfo();
       updateWeatherUI();
       updateForecastUI();
@@ -206,6 +202,7 @@ function createLanguageSelector() {
       selector.classList.remove("rounded-b-md");
 
       updateUIForLanguage();
+      updateForecastDayNames();
 
       event.stopPropagation();
     });

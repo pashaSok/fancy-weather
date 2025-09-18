@@ -81,9 +81,7 @@ export const getWeatherForecast = async (latitude, longitude) => {
       .slice(0, 3);
 
     return middayForecasts.map((day) => ({
-      date: new Date(day.dt * 1000).toLocaleDateString("en-US", {
-        weekday: "long",
-      }),
+      date: new Date(day.dt * 1000),
       temp: Math.round(day.main.temp),
       icon: day.weather[0].icon.replace("n", "d"),
       description: day.weather[0].description,
@@ -110,8 +108,10 @@ export const getCityBackground = async (city, weatherCondition, timezone) => {
   else timeOfDay = "night";
 
   try {
-    const query = `${city} city landscape ${weatherCondition} ${timeOfDay}`;
+    const timestamp = new Date().getTime();
+    const query = `${city} city landscape ${weatherCondition} ${timeOfDay} ${timestamp}`;
     const encodedQuery = encodeURIComponent(query);
+
     const url = `https://api.unsplash.com/photos/random?query=${encodedQuery}&client_id=${UNSPLASH_API_KEY}&orientation=landscape`;
 
     const response = await fetch(url);
@@ -120,8 +120,14 @@ export const getCityBackground = async (city, weatherCondition, timezone) => {
     }
 
     const data = await response.json();
-    return data.urls.regular;
+
+    if (data.urls?.regular) {
+      return data.urls.regular;
+    }
+
+    return null;
   } catch (error) {
+    console.error("Failed to get background image:", error);
     return null;
   }
 };

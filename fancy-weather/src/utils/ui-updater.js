@@ -10,6 +10,49 @@ import { getStaticMapUrl } from "../components/api.js";
 
 let mapInitialized = false;
 
+const getLocalizedDayName = (date, lang) => {
+  const t = translations[lang];
+  const englishDay = date.toLocaleDateString("en-US", { weekday: "long" });
+
+  if (t && t.daysOfWeek && t.daysOfWeek[englishDay]) {
+    return t.daysOfWeek[englishDay];
+  }
+
+  return englishDay;
+};
+
+const getLocalizedDateTime = (date, lang) => {
+  if (lang === "be") {
+    const t = translations[lang];
+    const englishWeekday = date.toLocaleDateString("en-US", {
+      weekday: "short",
+    });
+    const englishMonth = date.toLocaleDateString("en-US", { month: "long" });
+
+    const weekday = t.shortDays[englishWeekday] || englishWeekday;
+    const day = date.getDate();
+    const month = t.months[englishMonth] || englishMonth;
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+
+    return `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
+  }
+
+  const locales = {
+    en: "en-US",
+    ru: "ru-RU",
+  };
+
+  const locale = locales[lang] || "en-US";
+  const weekday = date.toLocaleDateString(locale, { weekday: "short" });
+  const day = date.getDate();
+  const month = date.toLocaleDateString(locale, { month: "long" });
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+
+  return `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
+};
+
 export const updateAllWeatherData = () => {
   updateLocationInfo();
   updateWeatherUI();
@@ -28,8 +71,8 @@ export const updateLocationInfo = () => {
     }`;
   }
 
-  if (dateTimeElement && state.currentDate && state.currentTime) {
-    dateTimeElement.textContent = `${state.currentDate} • ${state.currentTime}`;
+  if (dateTimeElement && state.currentDate) {
+    dateTimeElement.textContent = state.currentDate;
   }
 };
 
@@ -75,7 +118,9 @@ export const updateWeatherUI = () => {
   }
 
   if (elements.desc) {
-    elements.desc.textContent = state.currentWeather.description;
+    const weatherKey = state.currentWeather.description.toLowerCase();
+    elements.desc.textContent =
+      t.weatherConditions[weatherKey] || state.currentWeather.description;
   }
 
   if (elements.feelsLike && t) {
@@ -99,7 +144,10 @@ export const updateForecastUI = () => {
   if (!state.forecast?.length) return;
 
   document.querySelectorAll(".forecast-day-name").forEach((el, i) => {
-    if (state.forecast[i]) el.textContent = state.forecast[i].date;
+    if (state.forecast[i]) {
+      const date = state.forecast[i].date;
+      el.textContent = getLocalizedDayName(date, state.currentLang);
+    }
   });
 
   document.querySelectorAll(".forecast-day-icon").forEach((el, i) => {
@@ -110,6 +158,18 @@ export const updateForecastUI = () => {
   });
 
   updateForecastTemperatures();
+};
+
+export const updateForecastDayNames = () => {
+  const state = getState();
+  if (!state.forecast?.length) return;
+
+  document.querySelectorAll(".forecast-day-name").forEach((el, i) => {
+    if (state.forecast[i]) {
+      const date = state.forecast[i].date;
+      el.textContent = getLocalizedDayName(date, state.currentLang);
+    }
+  });
 };
 
 export const updateForecastTemperatures = () => {
@@ -233,45 +293,83 @@ export const updateDateTime = () => {
 
   const updateTime = () => {
     if (state.timezone) {
-      const now = new Date();
-      const options = {
-        timeZone: state.timezone,
-        weekday: "short",
-        day: "numeric",
-        month: "long",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      };
+      try {
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat("en-US", {
+          timeZone: state.timezone,
+          weekday: "short",
+          day: "numeric",
+          month: "long",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
 
-      const formatter = new Intl.DateTimeFormat(state.currentLang, options);
-      const parts = formatter.formatToParts(now);
+        const parts = formatter.formatToParts(now);
+        let weekday, day, month, hours, minutes;
 
-      updateState({
-        currentDate: `${parts.find((p) => p.type === "weekday").value}, ${
-          parts.find((p) => p.type === "day").value
-        } ${parts.find((p) => p.type === "month").value}`,
-        currentTime: `${parts
-          .find((p) => p.type === "hour")
-          .value.padStart(2, "0")}:${parts
-          .find((p) => p.type === "minute")
-          .value.padStart(2, "0")}`,
-      });
+        parts.forEach((part) => {
+          switch (part.type) {
+            case "weekday":
+              weekday = part.value;
+              break;
+            case "day":
+              day = part.value;
+              break;
+            case "month":
+              month = part.value;
+              break;
+            case "hour":
+              hours = part.value;
+              break;
+            case "minute":
+              minutes = part.value;
+              break;
+          }
+        });
 
-      updateLocationInfo();
+        let formattedDate;
+        const t = translations[state.currentLang];
+
+        if (state.currentLang === "be") {
+          const beWeekday = t.shortDays[weekday] || weekday;
+          const beMonth = t.months[month] || month;
+          formattedDate = `${beWeekday}, ${day} ${beMonth} • ${hours}:${minutes}`;
+        } else if (state.currentLang === "ru") {
+          const ruWeekday = t.shortDays[weekday] || weekday;
+          const ruMonth = t.months[month] || month;
+          formattedDate = `${ruWeekday}, ${day} ${ruMonth} • ${hours}:${minutes}`;
+        } else {
+          formattedDate = `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
+        }
+
+        updateState({
+          currentDate: formattedDate,
+          currentTime: `${hours}:${minutes}`,
+        });
+
+        updateLocationInfo();
+      } catch (error) {
+        console.error("Error formatting date:", error);
+        const now = new Date();
+        const formattedDateTime = getLocalizedDateTime(now, state.currentLang);
+        updateState({
+          currentDate: formattedDateTime,
+          currentTime: `${now.getHours().toString().padStart(2, "0")}:${now
+            .getMinutes()
+            .toString()
+            .padStart(2, "0")}`,
+        });
+        updateLocationInfo();
+      }
     }
   };
 
   updateTime();
-  const now = new Date();
-  const secondsUntilNextMinute = 60 - now.getSeconds();
 
-  const interval = setTimeout(() => {
-    updateTime();
-    updateState({
-      timeUpdateInterval: setInterval(updateTime, 60000),
-    });
-  }, secondsUntilNextMinute * 1000);
+  updateState({
+    timeUpdateInterval: setInterval(updateTime, 60000),
+  });
 };
 
 export const updateUIForLanguage = () => {
@@ -287,6 +385,7 @@ export const updateUIForLanguage = () => {
   updateWeatherUI();
   updateDateTime();
   updateMapTexts();
+  updateForecastDayNames();
 };
 
 export const updateMapTexts = () => {
@@ -319,7 +418,6 @@ export const updateMapOnCityChange = (newLat, newLng) => {
     if (iframe) {
       iframe.src = getStaticMapUrl(newLat, newLng);
     }
-
     const latValue = wrapper.querySelector(".font-bold:first-child");
     const lngValue = wrapper.querySelector(".font-bold:last-child");
 
@@ -343,6 +441,7 @@ export const updateMapOnCityChange = (newLat, newLng) => {
     }
   }
 };
+
 export const initializeMap = () => {
   const state = getState();
   if (state.currentLatitude && state.currentLongitude && !mapInitialized) {

@@ -4,6 +4,7 @@ import {
   updateLocationInfo,
   updateWeatherUI,
   updateForecastUI,
+  updateForecastDayNames,
   updateMapUI,
   updateMapOnCityChange,
   initializeMap,
@@ -48,19 +49,32 @@ export const loadInitialData = async () => {
 };
 
 export const loadWeatherData = async (cityName = null) => {
-  const state = getState();
+  let currentCity = getState().currentCity;
+  let currentTimezone = getState().timezone;
 
   if (cityName) {
-    const locationData = await getLocationByCity(cityName);
-    updateMapOnCityChange(locationData.latitude, locationData.longitude);
+    try {
+      const locationData = await getLocationByCity(cityName);
 
-    updateState({
-      currentCity: locationData.city,
-      currentCountry: locationData.country_name,
-      timezone: locationData.timezone,
-    });
+      updateMapOnCityChange(locationData.latitude, locationData.longitude);
+
+      currentCity = locationData.city;
+      currentTimezone = locationData.timezone;
+
+      updateState({
+        currentCity: locationData.city,
+        currentCountry: locationData.country_name,
+        currentLatitude: locationData.latitude,
+        currentLongitude: locationData.longitude,
+        timezone: locationData.timezone,
+      });
+    } catch (error) {
+      console.error("Failed to get location:", error);
+      throw error;
+    }
   }
 
+  const state = getState();
   const [weatherData, forecastData] = await Promise.all([
     getWeather(state.currentLatitude, state.currentLongitude),
     getWeatherForecast(state.currentLatitude, state.currentLongitude),
@@ -78,15 +92,26 @@ export const loadWeatherData = async (cityName = null) => {
       },
     });
 
-    const bgUrl = await getCityBackground(
-      state.currentCity,
-      weatherData.weather[0].main,
-      state.timezone
-    );
-    updateBackground(bgUrl);
+    try {
+      const bgUrl = await getCityBackground(
+        currentCity,
+        weatherData.weather[0].main,
+        currentTimezone
+      );
+
+      if (bgUrl) {
+        updateBackground(bgUrl);
+      } else {
+        updateBackground(null);
+      }
+    } catch (bgError) {
+      console.error("Failed to update background:", bgError);
+      updateBackground(null);
+    }
   }
 
   updateState({ forecast: forecastData || [] });
+  return true;
 };
 
 export const updateBackground = (imageUrl) => {
@@ -97,6 +122,11 @@ export const updateBackground = (imageUrl) => {
     app.style.backgroundImage =
       "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)";
     app.className = "min-h-screen flex flex-col";
+    return;
+  }
+
+  const currentBg = app.style.backgroundImage;
+  if (currentBg.includes(imageUrl)) {
     return;
   }
 
@@ -114,13 +144,27 @@ export const updateBackground = (imageUrl) => {
   };
 };
 
+export const refreshBackground = async () => {
+  const state = getState();
+  if (!state.currentWeather || !state.currentCity) return;
+
+  const bgUrl = await getCityBackground(
+    state.currentCity,
+    state.currentWeather.description,
+    state.timezone
+  );
+  updateBackground(bgUrl);
+};
+
 export const weatherApp = {
   init: initApp,
   loadWeatherData,
   updateBackground,
+  refreshBackground,
   updateAllWeatherData,
   updateLocationInfo,
   updateWeatherUI,
   updateForecastUI,
+  updateForecastDayNames,
   updateMapUI,
 };
