@@ -11,6 +11,7 @@ export const translations = {
     errorCityNotFound:
       "City not found. Check the name or try another location.",
     errorWeatherUnavailable: "Weather data unavailable. Try again later.",
+    errorEnterCity: "Please enter a correct city name, not a country",
     errorRefreshFailed: "Failed to refresh weather data",
     weatherConditions: {
       "clear sky": "Clear sky",
@@ -71,6 +72,7 @@ export const translations = {
     errorCityNotFound:
       "Город не найден. Проверьте название или попробуйте другое место.",
     errorWeatherUnavailable: "Данные о погоде недоступны. Попробуйте позже.",
+    errorEnterCity: "Пожалуйста, введите название города, а не страны",
     errorRefreshFailed: "Не удалось обновить данные о погоде",
     weatherConditions: {
       "clear sky": "Ясное небо",
@@ -79,7 +81,7 @@ export const translations = {
       "broken clouds": "Разорванные облака",
       "overcast clouds": "Пасмурно",
       "light rain": "Небольшой дождь",
-      "moderate rain": "Умеренный дождь",
+      "moderate rain": "Умеренный дождж",
       "heavy rain": "Сильный дождь",
       thunderstorm: "Гроза",
       snow: "Снег",
@@ -130,6 +132,7 @@ export const translations = {
     longitude: "Даўгата",
     errorCityNotFound:
       "Горад не знойдзены. Праверце назву або паспрабуйце іншае месца.",
+    errorEnterCity: "Калі ласка, увядзіце назву горада, а не краіны",
     errorWeatherUnavailable:
       "Дадзеныя надвор'я недаступныя. Паспрабуйце пазней.",
     errorRefreshFailed: "Не ўдалося абнавіць дадзеныя надвор'я",
@@ -180,4 +183,8 @@ export const translations = {
       Sun: "нд",
     },
   },
+};
+
+export const formatLocation = (city, country) => {
+  return `${city}, ${country}`;
 };

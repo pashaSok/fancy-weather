@@ -1,58 +1,182 @@
 const WEATHER_API_KEY = "e642079ae1bab0c72fd6413ea06a1c8b";
 const UNSPLASH_API_KEY = "Re_IpqUhO1nW0Xy9dxV5nSYM2zYqU6dp4WUhphjNU08";
 
-export const fetchWithErrorHandling = async (url, errorMessage) => {
+export const fetchWithErrorHandling = async (
+  url,
+  errorMessage,
+  options = {}
+) => {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, options);
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
     return await response.json();
   } catch (error) {
-    console.error(`${errorMessage}:`, error.message);
     throw new Error(errorMessage);
   }
 };
 
-export const getLocation = async () => {
-  const data = await fetchWithErrorHandling(
-    "https://ipapi.co/json/",
-    "Failed to get location by IP"
-  );
+export const getLocation = async (lang = "en") => {
+  try {
+    const ipData = await fetchWithErrorHandling(
+      "https://ipapi.co/json/",
+      "Failed to get location by IP"
+    );
 
-  return {
-    city: data.city || "Unknown",
-    country_name: data.country_name || "Unknown",
-    latitude: data.latitude || 0,
-    longitude: data.longitude || 0,
-    timezone: data.timezone || "UTC",
-  };
+    const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${ipData.latitude}&lon=${ipData.longitude}&accept-language=${lang}`;
+
+    const nominatimData = await fetchWithErrorHandling(
+      nominatimUrl,
+      "Failed to get localized location name",
+      {
+        headers: {
+          "Accept-Language": `${lang},en;q=0.5`,
+        },
+      }
+    );
+
+    let city = ipData.city || "Minsk";
+    let country = ipData.country_name || "Belarus";
+
+    if (nominatimData.address) {
+      if (nominatimData.address.city) {
+        city = nominatimData.address.city;
+      } else if (nominatimData.address.town) {
+        city = nominatimData.address.town;
+      } else if (nominatimData.address.village) {
+        city = nominatimData.address.village;
+      }
+
+      if (nominatimData.address.country) {
+        country = nominatimData.address.country;
+      }
+    }
+
+    return {
+      city: city,
+      country_name: country,
+      latitude: ipData.latitude || 53.9,
+      longitude: ipData.longitude || 27.5667,
+      timezone: ipData.timezone || "Europe/Minsk",
+    };
+  } catch (error) {
+    return {
+      city: "Minsk",
+      country_name: "Belarus",
+      latitude: 53.9,
+      longitude: 27.5667,
+      timezone: "Europe/Minsk",
+    };
+  }
 };
 
-export const getLocationByCity = async (city) => {
+export const getLocationByCity = async (city, lang = "en") => {
   if (!city?.trim()) {
     throw new Error("City name cannot be empty");
   }
 
-  const data = await fetchWithErrorHandling(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
       city
-    )}&count=1`,
-    `Failed to geocode city "${city}"`
-  );
+    )}&limit=1`;
 
-  if (!data.results?.length) {
-    throw new Error("City not found");
+    const data = await fetchWithErrorHandling(
+      url,
+      `Failed to geocode city "${city}"`,
+      {
+        headers: {
+          "Accept-Language": `${lang},en;q=0.5`,
+        },
+      }
+    );
+
+    if (!data.length) {
+      throw new Error("City not found");
+    }
+
+    const result = data[0];
+
+    let localizedCity = city;
+    let localizedCountry = "Unknown";
+
+    if (result.display_name) {
+      const parts = result.display_name.split(",");
+
+      if (parts.length > 0) {
+        localizedCity = parts[0].trim();
+      }
+
+      if (parts.length > 1) {
+        localizedCountry = parts[parts.length - 1].trim();
+        if (localizedCountry.length > 30) {
+          for (let i = parts.length - 2; i >= 0; i--) {
+            const part = parts[i].trim();
+            if (part.length > 2 && part.length < 30) {
+              localizedCountry = part;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (localizedCountry === "Unknown") {
+      throw new Error("Please enter a city name, not a country");
+    }
+
+    let timezone = "UTC";
+    try {
+      timezone = await getTimezoneByCoordinates(result.lat, result.lon);
+    } catch (tzError) {}
+
+    return {
+      city: localizedCity,
+      country_name: localizedCountry,
+      latitude: parseFloat(result.lat) || 0,
+      longitude: parseFloat(result.lon) || 0,
+      timezone: timezone,
+    };
+  } catch (error) {
+    throw error;
   }
+};
 
-  const [result] = data.results;
-  return {
-    city: result.name || city,
-    country_name: result.country || "Unknown",
-    latitude: result.latitude || 0,
-    longitude: result.longitude || 0,
-    timezone: result.timezone || "UTC",
-  };
+export const getTimezoneByCoordinates = async (lat, lng) => {
+  try {
+    const offset = Math.round(lng / 15);
+    const timezones = {
+      "-12": "Pacific/Midway",
+      "-11": "Pacific/Pago_Pago",
+      "-10": "Pacific/Honolulu",
+      "-9": "America/Anchorage",
+      "-8": "America/Los_Angeles",
+      "-7": "America/Denver",
+      "-6": "America/Chicago",
+      "-5": "America/New_York",
+      "-4": "America/Caracas",
+      "-3": "America/Sao_Paulo",
+      "-2": "America/Noronha",
+      "-1": "Atlantic/Azores",
+      0: "Europe/London",
+      1: "Europe/Paris",
+      2: "Europe/Helsinki",
+      3: "Europe/Moscow",
+      4: "Asia/Dubai",
+      5: "Asia/Karachi",
+      6: "Asia/Dhaka",
+      7: "Asia/Bangkok",
+      8: "Asia/Shanghai",
+      9: "Asia/Tokyo",
+      10: "Australia/Sydney",
+      11: "Pacific/Noumea",
+      12: "Pacific/Auckland",
+    };
+
+    return timezones[offset] || "UTC";
+  } catch (error) {
+    return "UTC";
+  }
 };
 
 export const getWeather = async (latitude, longitude) => {
@@ -87,7 +211,6 @@ export const getWeatherForecast = async (latitude, longitude) => {
       description: day.weather[0].description,
     }));
   } catch (error) {
-    console.error("Failed to fetch forecast:", error.message);
     throw new Error("Could not retrieve forecast data");
   }
 };
@@ -127,7 +250,6 @@ export const getCityBackground = async (city, weatherCondition, timezone) => {
 
     return null;
   } catch (error) {
-    console.error("Failed to get background image:", error);
     return null;
   }
 };

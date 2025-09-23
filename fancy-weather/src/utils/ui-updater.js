@@ -5,7 +5,7 @@ import {
   getTemperatureSymbol,
   clearTimeInterval,
 } from "./state.js";
-import { translations } from "./translations.js";
+import { translations, formatLocation } from "./translations.js";
 import { getStaticMapUrl } from "../components/api.js";
 
 let mapInitialized = false;
@@ -21,38 +21,6 @@ const getLocalizedDayName = (date, lang) => {
   return englishDay;
 };
 
-const getLocalizedDateTime = (date, lang) => {
-  if (lang === "be") {
-    const t = translations[lang];
-    const englishWeekday = date.toLocaleDateString("en-US", {
-      weekday: "short",
-    });
-    const englishMonth = date.toLocaleDateString("en-US", { month: "long" });
-
-    const weekday = t.shortDays[englishWeekday] || englishWeekday;
-    const day = date.getDate();
-    const month = t.months[englishMonth] || englishMonth;
-    const hours = date.getHours().toString().padStart(2, "0");
-    const minutes = date.getMinutes().toString().padStart(2, "0");
-
-    return `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
-  }
-
-  const locales = {
-    en: "en-US",
-    ru: "ru-RU",
-  };
-
-  const locale = locales[lang] || "en-US";
-  const weekday = date.toLocaleDateString(locale, { weekday: "short" });
-  const day = date.getDate();
-  const month = date.toLocaleDateString(locale, { month: "long" });
-  const hours = date.getHours().toString().padStart(2, "0");
-  const minutes = date.getMinutes().toString().padStart(2, "0");
-
-  return `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
-};
-
 export const updateAllWeatherData = () => {
   updateLocationInfo();
   updateWeatherUI();
@@ -66,9 +34,10 @@ export const updateLocationInfo = () => {
   const dateTimeElement = document.querySelector(".weather-datetime");
 
   if (locationElement) {
-    locationElement.textContent = `${state.currentCity}, ${
-      state.currentCountry || ""
-    }`;
+    locationElement.textContent = formatLocation(
+      state.currentCity,
+      state.currentCountry
+    );
   }
 
   if (dateTimeElement && state.currentDate) {
@@ -350,7 +319,6 @@ export const updateDateTime = () => {
 
         updateLocationInfo();
       } catch (error) {
-        console.error("Error formatting date:", error);
         const now = new Date();
         const formattedDateTime = getLocalizedDateTime(now, state.currentLang);
         updateState({
@@ -365,8 +333,24 @@ export const updateDateTime = () => {
     }
   };
 
-  updateTime();
+  const getLocalizedDateTime = (date, lang) => {
+    const locales = {
+      en: "en-US",
+      ru: "ru-RU",
+      be: "en-US",
+    };
 
+    const locale = locales[lang] || "en-US";
+    const weekday = date.toLocaleDateString(locale, { weekday: "short" });
+    const day = date.getDate();
+    const month = date.toLocaleDateString(locale, { month: "long" });
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+
+    return `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
+  };
+
+  updateTime();
   updateState({
     timeUpdateInterval: setInterval(updateTime, 60000),
   });
@@ -386,6 +370,7 @@ export const updateUIForLanguage = () => {
   updateDateTime();
   updateMapTexts();
   updateForecastDayNames();
+  updateLocationInfo();
 };
 
 export const updateMapTexts = () => {

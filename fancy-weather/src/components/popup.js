@@ -39,7 +39,6 @@ export function createErrorPopup() {
 
 export function showErrorPopup(messageKey) {
   if (!messageKey) {
-    console.warn("Error message is empty");
     return;
   }
 
@@ -51,10 +50,10 @@ export function showErrorPopup(messageKey) {
 
   const state = getState();
   const t = translations[state.currentLang];
+
+  const message = t[messageKey] || messageKey;
+
   const errorMessage = popup.querySelector("#error-message");
-  const message =
-    messageKey.split(".").reduce((obj, key) => obj && obj[key], t) ||
-    messageKey;
   errorMessage.textContent = message;
 
   popup.classList.remove("hidden", "translate-x-full");

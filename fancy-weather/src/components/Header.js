@@ -18,15 +18,19 @@ export async function updateCurrentData(cityName) {
   if (!cityName?.trim()) return;
 
   try {
-    await weatherApp.loadWeatherData(cityName);
-    updateAllWeatherData();
+    const success = await weatherApp.loadWeatherData(cityName);
 
-    const searchInput = document.querySelector('input[type="text"]');
-    if (searchInput) searchInput.value = "";
+    if (success) {
+      updateAllWeatherData();
+
+      const searchInput = document.querySelector('input[type="text"]');
+      if (searchInput) searchInput.value = "";
+    }
   } catch (error) {
-    if (error.message.includes("errorCityNotFound")) {
-      showErrorPopup("errorWeatherUnavailable");
-    } else {
+    if (
+      !error.message.includes("Please enter a city name") &&
+      !error.message.includes("City not found")
+    ) {
       showErrorPopup("errorRefreshFailed");
     }
 
@@ -132,7 +136,6 @@ function createRefreshButton() {
       updateWeatherUI();
       updateForecastUI();
     } catch (error) {
-      console.error("Refresh failed:", error);
       showErrorPopup("Failed to refresh weather data");
     } finally {
       setTimeout(() => {
@@ -191,18 +194,21 @@ function createLanguageSelector() {
     `;
     item.setAttribute("role", "menuitem");
 
-    item.addEventListener("click", (event) => {
+    item.addEventListener("click", async (event) => {
       event.preventDefault();
-      updateState({ currentLang: lang });
 
+      const oldLang = getState().currentLang;
+      updateState({ currentLang: lang });
       button.textContent = lang;
 
       menu.classList.remove("slide-down");
       menu.classList.add("slide-up");
       selector.classList.remove("rounded-b-md");
-
       updateUIForLanguage();
       updateForecastDayNames();
+      if (oldLang !== lang) {
+        await weatherApp.updateLocationLocalization();
+      }
 
       event.stopPropagation();
     });

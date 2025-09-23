@@ -17,6 +17,8 @@ import {
   getCityBackground,
 } from "../utils/api-utils.js";
 import { showLoader, hideLoader } from "../utils/dom-utils.js";
+import { showErrorPopup } from "../components/popup.js";
+import { translations } from "../utils/translations.js";
 
 export const initApp = async () => {
   showLoader();
@@ -25,7 +27,6 @@ export const initApp = async () => {
     updateAllWeatherData();
     initializeMap();
   } catch (error) {
-    console.error("App initialization failed:", error);
   } finally {
     hideLoader();
   }
@@ -33,33 +34,37 @@ export const initApp = async () => {
 
 export const loadInitialData = async () => {
   try {
-    const locationData = await getLocation();
+    const state = getState();
+    const locationData = await getLocation(state.currentLang);
+
     updateState({
-      currentCity: locationData.city || "Minsk",
-      currentCountry: locationData.country_name || "Belarus",
-      currentLatitude: locationData.latitude || 53.9,
-      currentLongitude: locationData.longitude || 27.5667,
-      timezone: locationData.timezone || "Europe/Minsk",
+      currentCity: locationData.city,
+      currentCountry: locationData.country_name,
+      currentLatitude: locationData.latitude,
+      currentLongitude: locationData.longitude,
+      timezone: locationData.timezone,
     });
 
     await loadWeatherData();
   } catch (error) {
-    console.warn("Using default location data:", error.message);
+    updateState({
+      currentCity: "Minsk",
+      currentCountry: "Belarus",
+      currentLatitude: 53.9,
+      currentLongitude: 27.5667,
+      timezone: "Europe/Minsk",
+    });
   }
 };
 
 export const loadWeatherData = async (cityName = null) => {
-  let currentCity = getState().currentCity;
-  let currentTimezone = getState().timezone;
+  const state = getState();
 
   if (cityName) {
     try {
-      const locationData = await getLocationByCity(cityName);
+      const locationData = await getLocationByCity(cityName, state.currentLang);
 
       updateMapOnCityChange(locationData.latitude, locationData.longitude);
-
-      currentCity = locationData.city;
-      currentTimezone = locationData.timezone;
 
       updateState({
         currentCity: locationData.city,
@@ -69,12 +74,21 @@ export const loadWeatherData = async (cityName = null) => {
         timezone: locationData.timezone,
       });
     } catch (error) {
-      console.error("Failed to get location:", error);
-      throw error;
+      const t = translations[state.currentLang];
+      let errorMessage = t.errorWeatherUnavailable;
+
+      if (error.message.includes("Please enter a city name")) {
+        errorMessage = t.errorEnterCity;
+      } else if (error.message.includes("City not found")) {
+        errorMessage = t.errorCityNotFound;
+      }
+
+      showErrorPopup(errorMessage);
+
+      return false;
     }
   }
 
-  const state = getState();
   const [weatherData, forecastData] = await Promise.all([
     getWeather(state.currentLatitude, state.currentLongitude),
     getWeatherForecast(state.currentLatitude, state.currentLongitude),
@@ -94,9 +108,9 @@ export const loadWeatherData = async (cityName = null) => {
 
     try {
       const bgUrl = await getCityBackground(
-        currentCity,
+        state.currentCity,
         weatherData.weather[0].main,
-        currentTimezone
+        state.timezone
       );
 
       if (bgUrl) {
@@ -105,12 +119,13 @@ export const loadWeatherData = async (cityName = null) => {
         updateBackground(null);
       }
     } catch (bgError) {
-      console.error("Failed to update background:", bgError);
       updateBackground(null);
     }
   }
 
   updateState({ forecast: forecastData || [] });
+  updateLocationInfo();
+
   return true;
 };
 
@@ -156,6 +171,23 @@ export const refreshBackground = async () => {
   updateBackground(bgUrl);
 };
 
+export const updateLocationLocalization = async () => {
+  const state = getState();
+  try {
+    const locationData = await getLocationByCity(
+      state.currentCity,
+      state.currentLang
+    );
+
+    updateState({
+      currentCity: locationData.city,
+      currentCountry: locationData.country_name,
+    });
+
+    updateLocationInfo();
+  } catch (error) {}
+};
+
 export const weatherApp = {
   init: initApp,
   loadWeatherData,
@@ -167,4 +199,5 @@ export const weatherApp = {
   updateForecastUI,
   updateForecastDayNames,
   updateMapUI,
+  updateLocationLocalization,
 };
