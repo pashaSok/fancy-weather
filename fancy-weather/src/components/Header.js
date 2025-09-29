@@ -1,17 +1,13 @@
 import { svgNamespace } from "../utils/constants.js";
 import { createContainer } from "../utils/container.js";
 import { translations } from "../utils/translations.js";
-import { getState, updateState, convertTemperature } from "../utils/state.js";
+import { getState, updateState } from "../utils/state.js";
 import {
   updateUIForLanguage,
   updateAllWeatherData,
-  updateLocationInfo,
-  updateWeatherUI,
-  updateForecastUI,
   updateForecastDayNames,
 } from "../utils/ui-updater.js";
 import { showErrorPopup } from "./popup.js";
-import { getWeather, getCityBackground } from "../utils/api-utils.js";
 import { weatherApp } from "../services/app-init.js";
 
 export async function updateCurrentData(cityName) {
@@ -21,18 +17,12 @@ export async function updateCurrentData(cityName) {
     const success = await weatherApp.loadWeatherData(cityName);
 
     if (success) {
-      updateAllWeatherData();
-
       const searchInput = document.querySelector('input[type="text"]');
       if (searchInput) searchInput.value = "";
     }
   } catch (error) {
-    if (
-      !error.message.includes("Please enter a city name") &&
-      !error.message.includes("City not found")
-    ) {
-      showErrorPopup("errorRefreshFailed");
-    }
+    console.error("Error in updateCurrentData:", error);
+    showErrorPopup("errorRefreshFailed");
 
     const searchInput = document.querySelector('input[type="text"]');
     if (searchInput) {
@@ -68,19 +58,14 @@ function createHeaderButtons() {
 
 function createRefreshButton() {
   const button = document.createElement("button");
-  button.className = `
-    w-11 h-11 bg-[#868D96]/50 bg-center size-12
-    hover:cursor-pointer relative rounded-md bg-blend-color-burn
-  `;
+  button.className =
+    "w-11 h-11 bg-[#868D96]/50 bg-center hover:cursor-pointer relative rounded-md bg-blend-color-burn flex-shrink-0";
   button.style.backgroundImage = 'url("./assets/refresh.jpg")';
 
   const spinner = document.createElementNS(svgNamespace, "svg");
   spinner.setAttribute(
     "class",
-    `
-    w-5 h-5 absolute top-1/2 left-1/2
-    transform -translate-x-1/2 -translate-y-1/2
-  `
+    "w-5 h-5 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
   );
   spinner.setAttribute("viewBox", "0 0 24 24");
   spinner.setAttribute("fill", "none");
@@ -102,40 +87,9 @@ function createRefreshButton() {
     spinner.classList.add("animate-spin");
     try {
       const state = getState();
-      if (!state.currentLatitude || !state.currentLongitude) {
-        throw new Error("Coordinates not available");
-      }
-      const weatherData = await getWeather(
-        state.currentLatitude,
-        state.currentLongitude
-      );
-
-      if (!weatherData?.weather?.[0]) {
-        throw new Error("Invalid weather data");
-      }
-
-      updateState({
-        currentWeather: {
-          temp: Math.round(weatherData.main.temp),
-          feels_like: Math.round(weatherData.main.feels_like),
-          humidity: weatherData.main.humidity,
-          wind: Math.round(weatherData.wind.speed),
-          icon: weatherData.weather[0].icon,
-          description: weatherData.weather[0].description,
-        },
-      });
-      const bgUrl = await getCityBackground(
-        state.currentCity,
-        weatherData.weather[0].main,
-        state.timezone
-      );
-
-      weatherApp.updateBackground(bgUrl);
-
-      updateLocationInfo();
-      updateWeatherUI();
-      updateForecastUI();
+      await weatherApp.loadWeatherData(state.currentCity);
     } catch (error) {
+      console.error("Refresh failed:", error);
       showErrorPopup("Failed to refresh weather data");
     } finally {
       setTimeout(() => {
@@ -149,37 +103,33 @@ function createRefreshButton() {
 
 function createLanguageSelector() {
   const selector = document.createElement("div");
-  selector.className = `
-    relative flex items-center justify-center
-    w-20 h-[44px] bg-[#868D96]/50 rounded-md
-    cursor-pointer gap-3
-  `;
+  selector.className =
+    "relative flex items-center justify-center w-20 h-[44px] bg-[#868D96]/50 rounded-md cursor-pointer gap-3";
 
   const state = getState();
   const button = document.createElement("button");
   button.textContent = state.currentLang + " ";
-  button.className = `
-    flex items-center justify-center
-    uppercase text-white text-sm font-bold
-    cursor-pointer
-  `;
+  button.className =
+    "flex items-center justify-center uppercase text-white text-sm font-bold cursor-pointer";
 
   const arrow = document.createElementNS(svgNamespace, "svg");
   arrow.setAttribute("class", "w-2 h-1 opacity-40");
   arrow.setAttribute("viewBox", "0 0 10 5");
   arrow.setAttribute("fill", "none");
-  arrow.innerHTML = `
-    <path fill-rule="evenodd" clip-rule="evenodd"
-      d="M4.84162 3.75747L8.62642 0L9.68323 1.0645L4.84162 5.87114L0 1.0645L1.05681 3.57628e-07L4.84162 3.75747Z"
-      stroke="#fff"
-    />
-  `;
+
+  const arrowPath = document.createElementNS(svgNamespace, "path");
+  arrowPath.setAttribute("fill-rule", "evenodd");
+  arrowPath.setAttribute("clip-rule", "evenodd");
+  arrowPath.setAttribute(
+    "d",
+    "M4.84162 3.75747L8.62642 0L9.68323 1.0645L4.84162 5.87114L0 1.0645L1.05681 3.57628e-07L4.84162 3.75747Z"
+  );
+  arrowPath.setAttribute("stroke", "#fff");
+  arrow.appendChild(arrowPath);
 
   const menu = document.createElement("div");
-  menu.className = `
-    absolute top-[100%] left-0 w-20 overflow-hidden
-    transition-all duration-300 ease-in-out slide-up
-  `;
+  menu.className =
+    "absolute top-[100%] left-0 w-20 overflow-hidden transition-all duration-300 ease-in-out slide-up";
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-orientation", "vertical");
 
@@ -187,11 +137,8 @@ function createLanguageSelector() {
     const item = document.createElement("a");
     item.href = "#";
     item.textContent = lang;
-    item.className = `
-      flex items-center justify-center bg-[#4C5255]/50
-      hover:bg-[#4C5255]/25 h-11 uppercase text-white
-      font-bold last:rounded-b-md
-    `;
+    item.className =
+      "flex items-center justify-center bg-[#4C5255]/50 hover:bg-[#4C5255]/25 h-11 uppercase text-white font-bold last:rounded-b-md";
     item.setAttribute("role", "menuitem");
 
     item.addEventListener("click", async (event) => {
@@ -204,8 +151,10 @@ function createLanguageSelector() {
       menu.classList.remove("slide-down");
       menu.classList.add("slide-up");
       selector.classList.remove("rounded-b-md");
+
       updateUIForLanguage();
       updateForecastDayNames();
+
       if (oldLang !== lang) {
         await weatherApp.updateLocationLocalization();
       }
@@ -244,12 +193,9 @@ function createLanguageSelector() {
 
 function createTemperatureToggle() {
   const toggle = document.createElement("div");
-  toggle.className = `
-    w-[88px] h-11 flex items-center
-    bg-[#868D96]/50 text-white rounded-md
-    cursor-pointer transition-opacity duration-300
-    font-bold text-[14px]
-  `;
+  toggle.className =
+    "w-[88px] h-11 flex items-center bg-[#868D96]/50 text-white rounded-md cursor-pointer transition-opacity duration-300 font-bold text-[14px]";
+
   const updateToggleAppearance = () => {
     const state = getState();
 
@@ -271,18 +217,13 @@ function createTemperatureToggle() {
 
   const fahrenheit = document.createElement("div");
   fahrenheit.textContent = "°F";
-  fahrenheit.className = `
-    w-full flex items-center justify-center
-    h-full rounded-l-md
-    transition-all duration-300
-  `;
+  fahrenheit.className =
+    "w-full flex items-center justify-center h-full rounded-l-md transition-all duration-300";
 
   const celsius = document.createElement("div");
   celsius.textContent = "°C";
-  celsius.className = `
-    w-full h-full flex items-center justify-center
-    rounded-r-md transition-all duration-300
-  `;
+  celsius.className =
+    "w-full h-full flex items-center justify-center rounded-r-md transition-all duration-300";
 
   toggle.append(fahrenheit, celsius);
 
@@ -309,20 +250,14 @@ function createSearchInput() {
   wrapper.className = "flex items-center w-[375px] rounded-lg";
 
   const inputContainer = document.createElement("div");
-  inputContainer.className = `
-    relative flex-grow rounded-l-lg h-11 box-border
-    flex items-center justify-between bg-[#868D96]/50
-    border border-[#6F7884]/50
-  `;
+  inputContainer.className =
+    "relative flex-grow rounded-l-lg h-11 box-border flex items-center justify-between bg-[#868D96]/50 border border-[#6F7884]/50";
 
   const input = document.createElement("input");
   input.type = "text";
   input.placeholder = t.searchPlaceholder;
-  input.className = `
-    px-[15px] rounded-l-lg text-[14px] focus:outline-none
-    w-full h-full text-white placeholder-white
-    placeholder-opacity-70
-  `;
+  input.className =
+    "px-[15px] rounded-l-lg text-[14px] focus:outline-none w-full h-full text-white placeholder-white placeholder-opacity-70";
 
   input.addEventListener("keypress", (e) => {
     if (e.key === "Enter") {
@@ -332,27 +267,31 @@ function createSearchInput() {
 
   const micButton = document.createElement("button");
   micButton.type = "button";
-  micButton.className = `
-    absolute right-2 top-1/2 transform -translate-y-1/2
-    text-[#848c95] transition-all duration-300
-    hover:text-[#848c95]/50 focus:outline-none cursor-pointer
-  `;
-  micButton.innerHTML = `
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-      <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
-    </svg>
-  `;
+  micButton.className =
+    "absolute right-2 top-1/2 transform -translate-y-1/2 text-[#848c95] transition-all duration-300 hover:text-[#848c95]/50 focus:outline-none cursor-pointer";
+
+  const micSvg = document.createElementNS(svgNamespace, "svg");
+  micSvg.setAttribute("class", "h-5 w-5");
+  micSvg.setAttribute("viewBox", "0 0 20 20");
+  micSvg.setAttribute("fill", "currentColor");
+
+  const micPath = document.createElementNS(svgNamespace, "path");
+  micPath.setAttribute("fill-rule", "evenodd");
+  micPath.setAttribute(
+    "d",
+    "M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
+  );
+  micPath.setAttribute("clip-rule", "evenodd");
+
+  micSvg.appendChild(micPath);
+  micButton.appendChild(micSvg);
 
   inputContainer.append(input, micButton);
 
   const searchButton = document.createElement("button");
   searchButton.type = "button";
-  searchButton.className = `
-    h-11 w-[101px] bg-[#848c95] text-[14px]
-    font-bold uppercase rounded-r-lg text-white
-    hover:bg-[#5a6268] transition-colors duration-200
-    flex items-center justify-center cursor-pointer search-button
-  `;
+  searchButton.className =
+    "h-11 w-[101px] bg-[#848c95] text-[14px] font-bold uppercase rounded-r-lg text-white hover:bg-[#5a6268] transition-colors duration-200 flex items-center justify-center cursor-pointer search-button";
   searchButton.textContent = t.searchButton;
 
   searchButton.addEventListener("click", () => {

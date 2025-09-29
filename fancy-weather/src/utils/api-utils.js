@@ -234,16 +234,13 @@ export const getCityBackground = async (city, weatherCondition, timezone) => {
     const timestamp = new Date().getTime();
     const query = `${city} city landscape ${weatherCondition} ${timeOfDay} ${timestamp}`;
     const encodedQuery = encodeURIComponent(query);
-
     const url = `https://api.unsplash.com/photos/random?query=${encodedQuery}&client_id=${UNSPLASH_API_KEY}&orientation=landscape`;
-
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Unsplash API error: ${response.status}`);
     }
 
     const data = await response.json();
-
     if (data.urls?.regular) {
       return data.urls.regular;
     }

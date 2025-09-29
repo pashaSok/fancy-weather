@@ -271,11 +271,12 @@ export const updateDateTime = () => {
           month: "long",
           hour: "2-digit",
           minute: "2-digit",
+          second: "2-digit",
           hour12: false,
         });
 
         const parts = formatter.formatToParts(now);
-        let weekday, day, month, hours, minutes;
+        let weekday, day, month, hours, minutes, seconds;
 
         parts.forEach((part) => {
           switch (part.type) {
@@ -294,6 +295,9 @@ export const updateDateTime = () => {
             case "minute":
               minutes = part.value;
               break;
+            case "second":
+              seconds = part.value;
+              break;
           }
         });
 
@@ -303,22 +307,23 @@ export const updateDateTime = () => {
         if (state.currentLang === "be") {
           const beWeekday = t.shortDays[weekday] || weekday;
           const beMonth = t.months[month] || month;
-          formattedDate = `${beWeekday}, ${day} ${beMonth} • ${hours}:${minutes}`;
+          formattedDate = `${beWeekday}, ${day} ${beMonth} • ${hours}:${minutes}:${seconds}`;
         } else if (state.currentLang === "ru") {
           const ruWeekday = t.shortDays[weekday] || weekday;
           const ruMonth = t.months[month] || month;
-          formattedDate = `${ruWeekday}, ${day} ${ruMonth} • ${hours}:${minutes}`;
+          formattedDate = `${ruWeekday}, ${day} ${ruMonth} • ${hours}:${minutes}:${seconds}`;
         } else {
-          formattedDate = `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
+          formattedDate = `${weekday}, ${day} ${month} • ${hours}:${minutes}:${seconds}`;
         }
 
         updateState({
           currentDate: formattedDate,
-          currentTime: `${hours}:${minutes}`,
+          currentTime: `${hours}:${minutes}:${seconds}`,
         });
 
         updateLocationInfo();
       } catch (error) {
+        console.error("Error formatting date:", error);
         const now = new Date();
         const formattedDateTime = getLocalizedDateTime(now, state.currentLang);
         updateState({
@@ -326,7 +331,7 @@ export const updateDateTime = () => {
           currentTime: `${now.getHours().toString().padStart(2, "0")}:${now
             .getMinutes()
             .toString()
-            .padStart(2, "0")}`,
+            .padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`,
         });
         updateLocationInfo();
       }
@@ -346,13 +351,14 @@ export const updateDateTime = () => {
     const month = date.toLocaleDateString(locale, { month: "long" });
     const hours = date.getHours().toString().padStart(2, "0");
     const minutes = date.getMinutes().toString().padStart(2, "0");
+    const seconds = date.getSeconds().toString().padStart(2, "0");
 
-    return `${weekday}, ${day} ${month} • ${hours}:${minutes}`;
+    return `${weekday}, ${day} ${month} • ${hours}:${minutes}:${seconds}`;
   };
 
   updateTime();
   updateState({
-    timeUpdateInterval: setInterval(updateTime, 60000),
+    timeUpdateInterval: setInterval(updateTime, 1000), // Обновляем каждую секунду вместо 60000
   });
 };
 
